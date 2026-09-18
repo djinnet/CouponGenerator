@@ -13,25 +13,43 @@ public static class TsvReader
     static readonly string[] Required = ["Product name", "Promotional code", "Redeemable URL"];
     public static ReadResult Read(string path)
     {
-        if (!File.Exists(path)) throw new FileNotFoundException("Input TSV file not found.", path);
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException("Input TSV file not found.", path);
+        }
+
         using var reader = new StreamReader(path, System.Text.Encoding.UTF8, true);
         using var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture)
         {
-            Delimiter = "\t", HasHeaderRecord = true, TrimOptions = TrimOptions.None,
+            Delimiter = "\t",
+            HasHeaderRecord = true,
+            TrimOptions = TrimOptions.None,
             BadDataFound = bad => throw new InvalidOperationException($"Invalid TSV structure near row {bad.Context.Parser?.Row ?? 0}."),
-            MissingFieldFound = null, HeaderValidated = null
+            MissingFieldFound = null,
+            HeaderValidated = null
         });
-        if (!csv.Read()) throw new InvalidOperationException("TSV is empty.");
+        if (!csv.Read())
+        {
+            throw new InvalidOperationException("TSV is empty.");
+        }
+
         csv.ReadHeader();
         var headers = csv.HeaderRecord ?? [];
         var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < headers.Length; i++)
         {
             var key = headers[i].Trim().TrimStart('\uFEFF');
-            if (!map.TryAdd(key, i)) throw new InvalidOperationException($"Duplicate TSV header: {key}");
+            if (!map.TryAdd(key, i))
+            {
+                throw new InvalidOperationException($"Duplicate TSV header: {key}");
+            }
         }
         var missing = Required.Where(h => !map.ContainsKey(h)).ToArray();
-        if (missing.Length > 0) throw new InvalidOperationException($"Missing required headers: {string.Join(", ", missing)}");
+        if (missing.Length > 0)
+        {
+            throw new InvalidOperationException($"Missing required headers: {string.Join(", ", missing)}");
+        }
+
         var records = new List<CouponRecord>();
         var warnings = new List<string>();
         int rows = 0, invalid = 0;
@@ -47,17 +65,15 @@ public static class TsvReader
             string product = Field("Product name").Trim();
             string code = Field("Promotional code");
             string url = Field("Redeemable URL").Trim();
-            if (string.IsNullOrWhiteSpace(product) || string.IsNullOrWhiteSpace(code) ||
-                !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(uri.Host))
+            if (string.IsNullOrWhiteSpace(product) || string.IsNullOrWhiteSpace(code) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || string.IsNullOrWhiteSpace(uri.Host))
             {
-                invalid++; warnings.Add($"Row {row}: missing product/code or invalid HTTPS URL; skipped."); continue;
+                invalid++; warnings.Add($"Row {row}: missing product/code or invalid HTTP URL; skipped."); continue;
             }
             bool available = ParseBool(Field("Available"), true, "Available", row, warnings);
             bool redeemed = ParseBool(Field("Redeemed"), false, "Redeemed", row, warnings);
             DateOnly? start = ParseDate(Field("Start date"), "Start date", row, warnings);
             DateOnly? expiry = ParseDate(Field("Expire date"), "Expire date", row, warnings);
-            records.Add(new(row, product, code, url, start, expiry, available, redeemed,
-                Field("Given to").Trim(), Field("Code ID").Trim(), Field("Order ID").Trim()));
+            records.Add(new(row, product, code, url, start, expiry, available, redeemed, Field("Given to").Trim(), Field("Code ID").Trim(), Field("Order ID").Trim()));
         }
         return new(records, warnings, rows, invalid);
     }
@@ -70,13 +86,25 @@ public static class TsvReader
             "false" or "no" or "0" => false,
             _ => Warn()
         };
-        bool Warn() { warnings.Add($"Row {row}: invalid {name}; using {fallback}."); return fallback; }
+        bool Warn()
+        {
+            warnings.Add($"Row {row}: invalid {name}; using {fallback}.");
+            return fallback;
+        }
     }
     static DateOnly? ParseDate(string raw, string name, int row, List<string> warnings)
     {
-        if (string.IsNullOrWhiteSpace(raw)) return null;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
         string[] formats = ["yyyy-MM-dd", "yyyy/MM/dd", "dd MMM yyyy", "d MMM yyyy", "MMM d yyyy", "MMMM d yyyy"];
-        if (DateOnly.TryParseExact(raw.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) return date;
+        if (DateOnly.TryParseExact(raw.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+        {
+            return date;
+        }
+
         warnings.Add($"Row {row}: invalid or ambiguous {name}; date ignored.");
         return null;
     }
