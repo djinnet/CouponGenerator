@@ -1,0 +1,22 @@
+{
+  "PageSize": "A4",
+  "Orientation": "portrait",
+  "Columns": 2,
+  "Rows": 3,
+  "Margin": 10,
+  "CardGap": 4,
+  "CutMarks": true,
+  "PageNumbers": true,
+  "Title": "Coupon sheets",
+  "Footer": "",
+  "BackgroundColor": "#FFFFFF",
+  "AccentColor": "#183153",
+  "IncludeGivenTo": false,
+  "IncludeUrl": "none",
+  "IncludeIds": false,
+  "IncludeRedeemed": false,
+  "IncludeUnavailable": false,
+  "IncludeExpired": false,
+  "IncludeFuture": false,
+  "BlackAndWhite": false
+}

@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+.dotnet/
+.nuget/
+.appdata/
+.vs/
+tmp/
+*.user
+*.suo
