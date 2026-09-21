@@ -22,7 +22,20 @@ public static class Cli
     {
         var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var flags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        { "cut-marks", "page-numbers", "include-given-to", "include-ids", "include-redeemed", "include-unavailable", "include-expired", "include-future", "exclude-redeemed", "exclude-unavailable", "black-and-white", "verbose" };
+        {
+            "cut-marks",
+            "page-numbers",
+            "include-given-to",
+            "include-ids",
+            "include-redeemed",
+            "include-unavailable",
+            "include-expired",
+            "include-future",
+            "exclude-redeemed",
+            "exclude-unavailable",
+            "black-and-white",
+            "verbose"
+        };
         var known = new HashSet<string>(flags, StringComparer.OrdinalIgnoreCase);
         known.UnionWith(["input", "output", "page-size", "orientation", "columns", "rows", "margin", "card-gap", "logo", "title", "footer", "background-color", "accent-color", "include-url", "config"]);
         for (int i = 1; i < args.Length; i++)
@@ -46,73 +59,73 @@ public static class Cli
             o = JsonSerializer.Deserialize<Options>(File.ReadAllText(config!), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
         }
 
-        string? V(string key) => values.GetValueOrDefault(key);
-        if (V("input") is { } input)
+        string? Values(string key) => values.GetValueOrDefault(key);
+        if (Values("input") is { } input)
         {
             o.Input = input;
         }
 
-        if (V("output") is { } output)
+        if (Values("output") is { } output)
         {
             o.Output = output;
         }
 
-        if (V("page-size") is { } size)
+        if (Values("page-size") is { } size)
         {
             o.PageSize = size;
         }
 
-        if (V("orientation") is { } orientation)
+        if (Values("orientation") is { } orientation)
         {
             o.Orientation = orientation;
         }
 
-        if (V("columns") is { } cols)
+        if (Values("columns") is { } cols)
         {
             o.Columns = int.Parse(cols, CultureInfo.InvariantCulture);
         }
 
-        if (V("rows") is { } rows)
+        if (Values("rows") is { } rows)
         {
             o.Rows = int.Parse(rows, CultureInfo.InvariantCulture);
         }
 
-        if (V("margin") is { } margin)
+        if (Values("margin") is { } margin)
         {
             o.Margin = double.Parse(margin, CultureInfo.InvariantCulture);
         }
 
-        if (V("card-gap") is { } gap)
+        if (Values("card-gap") is { } gap)
         {
             o.CardGap = double.Parse(gap, CultureInfo.InvariantCulture);
         }
 
-        if (V("logo") is { } logo)
+        if (Values("logo") is { } logo)
         {
             o.Logo = logo;
         }
 
-        if (V("title") is { } title)
+        if (Values("title") is { } title)
         {
             o.Title = title;
         }
 
-        if (V("footer") is { } footer)
+        if (Values("footer") is { } footer)
         {
             o.Footer = footer;
         }
 
-        if (V("background-color") is { } background)
+        if (Values("background-color") is { } background)
         {
             o.BackgroundColor = background;
         }
 
-        if (V("accent-color") is { } accent)
+        if (Values("accent-color") is { } accent)
         {
             o.AccentColor = accent;
         }
 
-        if (V("include-url") is { } url)
+        if (Values("include-url") is { } url)
         {
             o.IncludeUrl = url;
         }
@@ -125,17 +138,17 @@ public static class Cli
             ("include-expired", x => o.IncludeExpired=x), ("include-future", x => o.IncludeFuture=x),
             ("black-and-white", x => o.BlackAndWhite=x), ("verbose", x => o.Verbose=x)
         })
-            if (V(key) is not null)
+            if (Values(key) is not null)
             {
                 setter(true);
             }
 
-        if (V("exclude-redeemed") is not null)
+        if (Values("exclude-redeemed") is not null)
         {
             o.IncludeRedeemed = false;
         }
 
-        if (V("exclude-unavailable") is not null)
+        if (Values("exclude-unavailable") is not null)
         {
             o.IncludeUnavailable = false;
         }

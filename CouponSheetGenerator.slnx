@@ -1,6 +1,8 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/CouponSheetGenerator/CouponSheetGenerator.csproj" />
+    <Project Path="src/CouponSheetGenerator.Core/CouponSheetGenerator.Core.csproj" />
+    <Project Path="src/CouponSheetGenerator.Desktop/CouponSheetGenerator.Desktop.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/CouponSheetGenerator.Tests/CouponSheetGenerator.Tests.csproj" />

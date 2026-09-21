@@ -4,13 +4,14 @@ using CsvHelper.Configuration;
 
 namespace CouponSheetGenerator;
 
-public sealed record CouponRecord(int Row, string Product, string Code, string Url, DateOnly? Start, DateOnly? Expiry, bool Available, bool Redeemed, string GivenTo, string CodeId, string OrderId);
+public sealed record CouponRecord(int Row, string Product, string Code, string Url, DateOnly? Start, DateOnly? Expiry, bool Available, bool Redeemed, string GivenTo, string CodeId, string OrderId, string OrderName = "");
 public sealed record ReadResult(List<CouponRecord> Records, List<string> Warnings, int RowsRead, int InvalidRows);
 public sealed record Selection(List<CouponRecord> Coupons, int RedeemedExcluded, int UnavailableExcluded, int ExpiredExcluded, int FutureExcluded);
 
 public static class TsvReader
 {
     static readonly string[] Required = ["Product name", "Promotional code", "Redeemable URL"];
+    static readonly string[] Optional = ["Order name", "Start date", "Expire date", "Code ID", "Order ID", "Given to", "Available", "Redeemed"];
     public static ReadResult Read(string path)
     {
         if (!File.Exists(path))
@@ -44,6 +45,12 @@ public static class TsvReader
                 throw new InvalidOperationException($"Duplicate TSV header: {key}");
             }
         }
+
+        if (new FileInfo(path).Length > 32 * 1024 * 1024)
+        {
+            throw new InvalidOperationException("TSV exceeds the 32 MiB input limit.");
+        }
+
         var missing = Required.Where(h => !map.ContainsKey(h)).ToArray();
         if (missing.Length > 0)
         {
@@ -52,10 +59,22 @@ public static class TsvReader
 
         var records = new List<CouponRecord>();
         var warnings = new List<string>();
+        foreach (var optional in Optional.Where(h => !map.ContainsKey(h)))
+        {
+            warnings.Add($"Optional column absent: {optional}.");
+        }
+
+        var codes = new HashSet<string>(StringComparer.Ordinal);
+        var codeIds = new HashSet<string>(StringComparer.Ordinal);
         int rows = 0, invalid = 0;
         while (csv.Read())
         {
             rows++;
+            if (rows > 100_000)
+            {
+                throw new InvalidOperationException("TSV exceeds the 100,000-record limit.");
+            }
+
             int row = csv.Parser?.Row ?? rows + 1;
             if (csv.Parser?.Count != headers.Length)
             {
@@ -65,21 +84,53 @@ public static class TsvReader
             string product = Field("Product name").Trim();
             string code = Field("Promotional code");
             string url = Field("Redeemable URL").Trim();
-            if (string.IsNullOrWhiteSpace(product) || string.IsNullOrWhiteSpace(code) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || string.IsNullOrWhiteSpace(uri.Host))
+            if (Enumerable.Range(0, csv.Parser.Count).Any(i => (csv.GetField(i)?.Length ?? 0) > 16_384))
             {
-                invalid++; warnings.Add($"Row {row}: missing product/code or invalid HTTP URL; skipped."); continue;
+                invalid++; warnings.Add($"Row {row}: field exceeds the 16,384-character limit; skipped."); continue;
             }
+            if (string.IsNullOrWhiteSpace(product) || string.IsNullOrWhiteSpace(code))
+            {
+                invalid++; warnings.Add($"Row {row}: missing product/code; skipped."); continue;
+            }
+
+            // Redeemable URLs are encoded locally in QR codes; accept absolute HTTP or HTTPS URLs.
+            var urlValid = Uri.TryCreate(url, UriKind.Absolute, out var uriResult) && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps) && !string.IsNullOrWhiteSpace(uriResult.Host);
+            if (!urlValid)
+            {
+                invalid++; warnings.Add($"Row {row}: invalid URL; skipped."); continue;
+            }
+
+            if (!codes.Add(code))
+            {
+                warnings.Add($"Row {row}: duplicate promotional code; retained as a separate record.");
+            }
+
+            var codeId = Field("Code ID").Trim();
+            if (codeId.Length > 0 && !codeIds.Add(codeId))
+            {
+                warnings.Add($"Row {row}: duplicate Code ID; retained as a separate record.");
+            }
+
             bool available = ParseBool(Field("Available"), true, "Available", row, warnings);
             bool redeemed = ParseBool(Field("Redeemed"), false, "Redeemed", row, warnings);
             DateOnly? start = ParseDate(Field("Start date"), "Start date", row, warnings);
             DateOnly? expiry = ParseDate(Field("Expire date"), "Expire date", row, warnings);
-            records.Add(new(row, product, code, url, start, expiry, available, redeemed, Field("Given to").Trim(), Field("Code ID").Trim(), Field("Order ID").Trim()));
+            records.Add(new(row, product, code, url, start, expiry, available, redeemed, Field("Given to").Trim(), codeId, Field("Order ID").Trim(), Field("Order name").Trim()));
         }
+        if (rows == 0)
+        {
+            warnings.Add("TSV contains a header but no records.");
+        }
+
         return new(records, warnings, rows, invalid);
     }
     static bool ParseBool(string raw, bool fallback, string name, int row, List<string> warnings)
     {
-        if (string.IsNullOrWhiteSpace(raw)) return fallback;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return fallback;
+        }
+
         return raw.Trim().ToLowerInvariant() switch
         {
             "true" or "yes" or "1" => true,
