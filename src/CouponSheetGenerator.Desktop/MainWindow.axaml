@@ -46,16 +46,42 @@
                     <TextBlock Text="QR size (mm)"/><NumericUpDown Value="{Binding QrSizeMm}" Minimum="20" Maximum="60"/>
                     <TextBlock Text="Card padding (mm)"/><NumericUpDown Value="{Binding CardPaddingMm}" Minimum="0" Maximum="20"/>
                     <StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Choose PNG/JPEG logo…" Command="{Binding ChooseLogoCommand}"/><TextBlock Text="{Binding Logo}" VerticalAlignment="Center"/></StackPanel>
-                    <TextBlock Text="URL text: none, short, or full"/><TextBox Text="{Binding IncludeUrl}"/>
+                    <TextBlock Text="Logo width (mm, 0 = automatic)"/><NumericUpDown Value="{Binding LogoWidthMm}" Minimum="0" Maximum="100"/>
+                    <TextBlock Text="Logo height (mm)"/><NumericUpDown Value="{Binding LogoHeightMm}" Minimum="1" Maximum="40"/>
+                    <TextBlock Text="Card border color (#RRGGBB)"/><TextBox Text="{Binding BorderColor}"/>
+                    <TextBlock Text="Card border width (pt)"/><NumericUpDown Value="{Binding BorderWidthPt}" Minimum="0" Maximum="6" Increment="0.25"/>
+                    <TextBlock Text="Card corner radius (mm)"/><NumericUpDown Value="{Binding CornerRadiusMm}" Minimum="0" Maximum="15"/>
+                    <TextBlock Text="Front card background image"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Choose PNG/JPEG…" Command="{Binding ChooseCardBackgroundCommand}"/><Button Content="Clear" Command="{Binding ClearCardBackgroundCommand}"/><TextBlock Text="{Binding CardBackgroundImage}" VerticalAlignment="Center"/></StackPanel>
+                    <TextBlock Text="Background image fit"/><ComboBox ItemsSource="{Binding ImageFitOptions}" SelectedItem="{Binding CardBackgroundImageFit}" Width="180" HorizontalAlignment="Left"/>
+                    <TextBlock Text="URL text"/><ComboBox ItemsSource="{Binding UrlTextOptions}" SelectedItem="{Binding IncludeUrl}" Width="180" HorizontalAlignment="Left"/>
                     <CheckBox Content="Black and white" IsChecked="{Binding BlackAndWhite}"/>
+                    <TextBlock Text="{Binding SettingsError}" Foreground="Crimson" TextWrapping="Wrap"/>
+                </StackPanel></ScrollViewer>
+            </TabItem>
+            <TabItem Header="Card back">
+                <ScrollViewer><StackPanel Margin="12" Spacing="12" MaxWidth="600" HorizontalAlignment="Left">
+                    <TextBlock Text="Optional card back" FontSize="18" FontWeight="Bold"/>
+                    <CheckBox Content="Print a back page after each front page" IsChecked="{Binding BackEnabled}"/>
+                    <TextBlock Text="Back title"/><TextBox Text="{Binding BackTitle}"/>
+                    <TextBlock Text="Back message"/><TextBox Text="{Binding BackText}" AcceptsReturn="True" MinHeight="70" TextWrapping="Wrap"/>
+                    <TextBlock Text="Back background color (#RRGGBB)"/><TextBox Text="{Binding BackBackgroundColor}"/>
+                    <TextBlock Text="Back accent color (#RRGGBB)"/><TextBox Text="{Binding BackAccentColor}"/>
+                    <TextBlock Text="Back border color (#RRGGBB)"/><TextBox Text="{Binding BackBorderColor}"/>
+                    <CheckBox Content="Show logo on back" IsChecked="{Binding BackShowLogo}"/>
+                    <TextBlock Text="Back background image"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Choose PNG/JPEG…" Command="{Binding ChooseBackBackgroundCommand}"/><Button Content="Clear" Command="{Binding ClearBackBackgroundCommand}"/><TextBlock Text="{Binding BackBackgroundImage}" VerticalAlignment="Center"/></StackPanel>
+                    <TextBlock Text="Background image fit"/><ComboBox ItemsSource="{Binding ImageFitOptions}" SelectedItem="{Binding BackBackgroundImageFit}" Width="180" HorizontalAlignment="Left"/>
+                    <CheckBox Content="Mirror back columns for duplex printing" IsChecked="{Binding BackMirrorColumns}"/>
+                    <TextBlock Text="Print one sheet at actual size to confirm your printer's duplex alignment." TextWrapping="Wrap"/>
                     <TextBlock Text="{Binding SettingsError}" Foreground="Crimson" TextWrapping="Wrap"/>
                 </StackPanel></ScrollViewer>
             </TabItem>
             <TabItem Header="Page &amp; print layout">
                 <ScrollViewer><StackPanel Margin="12" Spacing="12" MaxWidth="600" HorizontalAlignment="Left">
                     <TextBlock Text="Page layout" FontSize="18" FontWeight="Bold"/>
-                    <TextBlock Text="Page size: A4 or Letter"/><TextBox Text="{Binding PageSize}"/>
-                    <TextBlock Text="Orientation: portrait or landscape"/><TextBox Text="{Binding Orientation}"/>
+                    <TextBlock Text="Page size"/><ComboBox ItemsSource="{Binding PageSizeOptions}" SelectedItem="{Binding SelectedPageSize}" Width="180" HorizontalAlignment="Left"/>
+                    <TextBlock Text="Orientation"/><ComboBox ItemsSource="{Binding OrientationOptions}" SelectedItem="{Binding SelectedOrientation}" Width="180" HorizontalAlignment="Left"/>
                     <TextBlock Text="Columns"/><NumericUpDown Value="{Binding Columns}" Minimum="1" Maximum="10"/>
                     <TextBlock Text="Rows"/><NumericUpDown Value="{Binding Rows}" Minimum="1" Maximum="10"/>
                     <TextBlock Text="Margin (mm)"/><NumericUpDown Value="{Binding Margin}" Minimum="0" Maximum="100"/>

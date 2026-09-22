@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Avalonia.Media.Imaging;
@@ -21,12 +20,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private string? previewPath;
     private int previewPages;
     private int currentPage;
+    private bool previewHasBack;
     private int eligibleCount;
     public ObservableCollection<string> Issues { get; } = [];
     public ObservableCollection<string> VisibleIssues { get; } = [];
     public ObservableCollection<RecordSummary> VisibleRecords { get; } = [];
     public string Version => typeof(MainViewModel).Assembly.GetName().Version?.ToString() ?? "Unknown";
     public IReadOnlyList<string> ThemeOptions { get; } = ["System", "Light", "Dark"];
+    public IReadOnlyList<PageSizeKind> PageSizeOptions { get; } = Enum.GetValues<PageSizeKind>();
+    public IReadOnlyList<PageOrientation> OrientationOptions { get; } = Enum.GetValues<PageOrientation>();
+    public IReadOnlyList<CardImageFit> ImageFitOptions { get; } = Enum.GetValues<CardImageFit>();
+    public IReadOnlyList<string> UrlTextOptions { get; } = ["none", "short", "full"];
     [ObservableProperty] private string? inputPath;
     [ObservableProperty] private string summary = "Choose a TSV file to begin.";
     [ObservableProperty] private string layoutSummary = "Import records to calculate the layout.";
@@ -34,7 +38,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string status = "Ready";
     [ObservableProperty] private string previewStatus = "No preview generated.";
     [ObservableProperty] private Bitmap? previewImage;
-    public string PageLabel => previewPages == 0 ? "No pages" : $"Page {currentPage + 1} of {previewPages}";
+    public string PageLabel => previewPages == 0 ? "No pages" : $"Page {currentPage + 1} of {previewPages}" + (previewHasBack ? currentPage % 2 == 0 ? " · Front" : " · Back" : "");
     public double PreviewWidth => PreviewImage is null ? 600 : PreviewImage.PixelSize.Width * preferences.PreviewZoom;
     public string Theme
     {
@@ -65,7 +69,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ApplyTheme();
         PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(Title) or nameof(Footer) or nameof(PageSize) or nameof(Orientation) or nameof(Columns) or nameof(Rows) or nameof(Margin) or nameof(CardGap) or nameof(CutMarks) or nameof(PageNumbers) or nameof(IncludeGivenTo) or nameof(IncludeIds) or nameof(IncludeUrl) or nameof(IncludeRedeemed) or nameof(IncludeUnavailable) or nameof(IncludeExpired) or nameof(IncludeFuture) or nameof(BlackAndWhite) or nameof(AccentColor) or nameof(BackgroundColor) or nameof(ShowProductName) or nameof(ShowDates) or nameof(ShowStatus) or nameof(ShowOrderName) or nameof(InstructionText) or nameof(CodeFontSize) or nameof(QrSizeMm) or nameof(CardPaddingMm) or nameof(Logo))
+            if (e.PropertyName is nameof(Title) or nameof(Footer) or nameof(PageSize) or nameof(Orientation) or nameof(Columns) or nameof(Rows) or nameof(Margin) or nameof(CardGap) or nameof(CutMarks) or nameof(PageNumbers) or nameof(IncludeGivenTo) or nameof(IncludeIds) or nameof(IncludeUrl) or nameof(IncludeRedeemed) or nameof(IncludeUnavailable) or nameof(IncludeExpired) or nameof(IncludeFuture) or nameof(BlackAndWhite) or nameof(AccentColor) or nameof(BackgroundColor) or nameof(ShowProductName) or nameof(ShowDates) or nameof(ShowStatus) or nameof(ShowOrderName) or nameof(InstructionText) or nameof(CodeFontSize) or nameof(QrSizeMm) or nameof(CardPaddingMm) or nameof(Logo)
+                or nameof(SelectedPageSize) or nameof(SelectedOrientation) or nameof(LogoWidthMm) or nameof(LogoHeightMm) or nameof(BorderColor) or nameof(BorderWidthPt) or nameof(CornerRadiusMm) or nameof(CardBackgroundImage) or nameof(CardBackgroundImageFit) or nameof(BackEnabled) or nameof(BackTitle) or nameof(BackText) or nameof(BackBackgroundColor) or nameof(BackAccentColor) or nameof(BackBorderColor) or nameof(BackBackgroundImage) or nameof(BackBackgroundImageFit) or nameof(BackShowLogo) or nameof(BackMirrorColumns))
             {
                 PreviewStatus = "Preview is stale. Refresh before reviewing.";
                 UpdateLayoutSummary();
@@ -77,6 +82,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public string? Footer { get => settings.Footer; set { settings.Footer = value; OnPropertyChanged(); } }
     public string PageSize { get => settings.PageSize; set { settings.PageSize = value; OnPropertyChanged(); } }
     public string Orientation { get => settings.Orientation; set { settings.Orientation = value; OnPropertyChanged(); } }
+    public PageSizeKind SelectedPageSize { get => settings.PageSizeValue; set { settings.PageSizeValue = value; OnPropertyChanged(); OnPropertyChanged(nameof(PageSize)); } }
+    public PageOrientation SelectedOrientation { get => settings.OrientationValue; set { settings.OrientationValue = value; OnPropertyChanged(); OnPropertyChanged(nameof(Orientation)); } }
     public int Columns { get => settings.Columns; set { settings.Columns = value; OnPropertyChanged(); } }
     public int Rows { get => settings.Rows; set { settings.Rows = value; OnPropertyChanged(); } }
     public double Margin { get => settings.Margin; set { settings.Margin = value; OnPropertyChanged(); } }
@@ -102,6 +109,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public double QrSizeMm { get => settings.QrSizeMm; set { settings.QrSizeMm = value; OnPropertyChanged(); } }
     public double CardPaddingMm { get => settings.CardPaddingMm; set { settings.CardPaddingMm = value; OnPropertyChanged(); } }
     public string? Logo { get => settings.Logo; set { settings.Logo = value; OnPropertyChanged(); } }
+    public double LogoWidthMm { get => settings.LogoWidthMm; set { settings.LogoWidthMm = value; OnPropertyChanged(); } }
+    public double LogoHeightMm { get => settings.LogoHeightMm; set { settings.LogoHeightMm = value; OnPropertyChanged(); } }
+    public string BorderColor { get => settings.BorderColor; set { settings.BorderColor = value; OnPropertyChanged(); } }
+    public double BorderWidthPt { get => settings.BorderWidthPt; set { settings.BorderWidthPt = value; OnPropertyChanged(); } }
+    public double CornerRadiusMm { get => settings.CornerRadiusMm; set { settings.CornerRadiusMm = value; OnPropertyChanged(); } }
+    public string? CardBackgroundImage { get => settings.CardBackgroundImage; set { settings.CardBackgroundImage = value; OnPropertyChanged(); } }
+    public CardImageFit CardBackgroundImageFit { get => settings.CardBackgroundImageFit; set { settings.CardBackgroundImageFit = value; OnPropertyChanged(); } }
+    public bool BackEnabled { get => settings.BackEnabled; set { settings.BackEnabled = value; OnPropertyChanged(); } }
+    public string BackTitle { get => settings.BackTitle; set { settings.BackTitle = value; OnPropertyChanged(); } }
+    public string BackText { get => settings.BackText; set { settings.BackText = value; OnPropertyChanged(); } }
+    public string BackBackgroundColor { get => settings.BackBackgroundColor; set { settings.BackBackgroundColor = value; OnPropertyChanged(); } }
+    public string BackAccentColor { get => settings.BackAccentColor; set { settings.BackAccentColor = value; OnPropertyChanged(); } }
+    public string BackBorderColor { get => settings.BackBorderColor; set { settings.BackBorderColor = value; OnPropertyChanged(); } }
+    public string? BackBackgroundImage { get => settings.BackBackgroundImage; set { settings.BackBackgroundImage = value; OnPropertyChanged(); } }
+    public CardImageFit BackBackgroundImageFit { get => settings.BackBackgroundImageFit; set { settings.BackBackgroundImageFit = value; OnPropertyChanged(); } }
+    public bool BackShowLogo { get => settings.BackShowLogo; set { settings.BackShowLogo = value; OnPropertyChanged(); } }
+    public bool BackMirrorColumns { get => settings.BackMirrorColumns; set { settings.BackMirrorColumns = value; OnPropertyChanged(); } }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task ChooseLogoAsync()
@@ -114,6 +138,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         Logo = path;
     }
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private async Task ChooseCardBackgroundAsync()
+    {
+        var path = await dialogs.OpenAsync("Choose front card PNG or JPEG background");
+        if (path is not null) CardBackgroundImage = path;
+    }
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private async Task ChooseBackBackgroundAsync()
+    {
+        var path = await dialogs.OpenAsync("Choose back card PNG or JPEG background");
+        if (path is not null) BackBackgroundImage = path;
+    }
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private void ClearCardBackground() => CardBackgroundImage = null;
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private void ClearBackBackground() => BackBackgroundImage = null;
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private void MinimalPreset()
@@ -216,7 +256,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (preview)
                 {
                     if (previewPath is { } old && File.Exists(old)) File.Delete(old);
-                    previewPath = path; previewPages = pages; currentPage = 0;
+                    previewPath = path; previewPages = pages; currentPage = 0; previewHasBack = snapshot.BackEnabled;
                     await RenderPageAsync(token);
                 }
                 PreviewStatus = preview ? $"Preview ready: {pages} pages, {selection.Coupons.Count} coupons." : "Export completed. Refresh preview after settings changes.";
@@ -396,7 +436,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            SettingsError = "Could not read logo file.";
+            SettingsError = "Could not read a selected image file.";
             LayoutSummary = SettingsError;
             PreviewCommand.NotifyCanExecuteChanged();
             ExportCommand.NotifyCanExecuteChanged();
@@ -449,7 +489,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             nameof(CodeFontSize),
             nameof(QrSizeMm),
             nameof(CardPaddingMm),
-            nameof(Logo)
+            nameof(Logo), nameof(SelectedPageSize), nameof(SelectedOrientation), nameof(LogoWidthMm), nameof(LogoHeightMm),
+            nameof(BorderColor), nameof(BorderWidthPt), nameof(CornerRadiusMm), nameof(CardBackgroundImage), nameof(CardBackgroundImageFit),
+            nameof(BackEnabled), nameof(BackTitle), nameof(BackText), nameof(BackBackgroundColor), nameof(BackAccentColor),
+            nameof(BackBorderColor), nameof(BackBackgroundImage), nameof(BackBackgroundImageFit), nameof(BackShowLogo), nameof(BackMirrorColumns)
         };
 
         foreach (var name in names)
@@ -461,36 +504,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
     private void ValidateSettings()
     {
-        if (PageSize is not ("A4" or "Letter") || Orientation is not ("portrait" or "landscape") || IncludeUrl is not ("none" or "short" or "full") || Columns is < 1 or > 10 || Rows is < 1 or > 10 || Margin < 0 || CardGap < 0 || !Regex.IsMatch(AccentColor, "^#[0-9a-fA-F]{6}$") || !Regex.IsMatch(BackgroundColor, "^#[0-9a-fA-F]{6}$"))
-        {
-            throw new ArgumentException("Check page size, orientation, grid, spacing and #RRGGBB colors.");
-        }
-
-        if (Logo is { Length: > 0 })
-        {
-            ValidateLogo(Logo);
-        }
-    }
-    private static void ValidateLogo(string path)
-    {
-        if (!File.Exists(path) || new FileInfo(path).Length > 10 * 1024 * 1024)
-        {
-            throw new ArgumentException("Logo must be an existing local file of 10 MiB or less.");
-        }
-
-        using var stream = File.OpenRead(path);
-        Span<byte> signature = stackalloc byte[8];
-        if (stream.Read(signature) < 8 || !(signature[..8].SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) || signature[0] == 0xFF && signature[1] == 0xD8 && signature[2] == 0xFF))
-        {
-            throw new ArgumentException("Logo must be a PNG or JPEG file.");
-        }
-
-        stream.Position = 0;
-        using var codec = SKCodec.Create(stream);
-        if (codec is null || codec.Info.Width > 4096 || codec.Info.Height > 4096)
-        {
-            throw new ArgumentException("Logo must be a valid image no larger than 4096 × 4096 pixels.");
-        }
+        if (IncludeUrl is not ("none" or "short" or "full")) throw new ArgumentException("Choose none, short, or full URL text.");
+        CouponLayout.Calculate(settings, eligibleCount);
+        if (!string.IsNullOrWhiteSpace(Logo)) LocalImage.Validate(Logo);
+        if (!string.IsNullOrWhiteSpace(CardBackgroundImage)) LocalImage.Validate(CardBackgroundImage);
+        if (BackEnabled && !string.IsNullOrWhiteSpace(BackBackgroundImage)) LocalImage.Validate(BackBackgroundImage);
     }
     private async Task RunAsync(Func<CancellationToken, Task> work)
     {
@@ -507,6 +525,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ResetDesktopPreferencesCommand.NotifyCanExecuteChanged();
         MinimalPresetCommand.NotifyCanExecuteChanged(); ModernPresetCommand.NotifyCanExecuteChanged(); InkSavingPresetCommand.NotifyCanExecuteChanged();
         ChooseLogoCommand.NotifyCanExecuteChanged();
+        ChooseCardBackgroundCommand.NotifyCanExecuteChanged(); ChooseBackBackgroundCommand.NotifyCanExecuteChanged();
+        ClearCardBackgroundCommand.NotifyCanExecuteChanged(); ClearBackBackgroundCommand.NotifyCanExecuteChanged();
         try { await work(source.Token); }
         catch (OperationCanceledException) { Status = "Cancelled."; }
         catch (Exception ex) { Status = $"Error: {ex.GetType().Name}. Check the file and settings."; Issues.Add(Status); RefreshIssues(); }
@@ -519,6 +539,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ResetDesktopPreferencesCommand.NotifyCanExecuteChanged();
             MinimalPresetCommand.NotifyCanExecuteChanged(); ModernPresetCommand.NotifyCanExecuteChanged(); InkSavingPresetCommand.NotifyCanExecuteChanged();
             ChooseLogoCommand.NotifyCanExecuteChanged();
+            ChooseCardBackgroundCommand.NotifyCanExecuteChanged(); ChooseBackBackgroundCommand.NotifyCanExecuteChanged();
+            ClearCardBackgroundCommand.NotifyCanExecuteChanged(); ClearBackBackgroundCommand.NotifyCanExecuteChanged();
         }
     }
     private void RefreshIssues()

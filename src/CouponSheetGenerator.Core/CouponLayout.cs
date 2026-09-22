@@ -54,7 +54,7 @@ public static class CouponLayout
             throw new ArgumentException("Code font size must be 0 (automatic) or at most 30 points.");
         }
 
-        if (options.LogoWidthMm is < 0 or > 100 || options.LogoHeightMm is < 1 or > 40 || options.LogoWidthMm + options.QrSizeMm + 2 * options.CardPaddingMm + 2 >= cardWidth && options.LogoHeightMm > 0)
+        if (options.LogoWidthMm is < 0 or > 100 || options.LogoHeightMm is < 1 or > 40 || options.LogoWidthMm > 0 && options.LogoWidthMm + options.QrSizeMm + 2 * options.CardPaddingMm + 2 >= cardWidth)
         {
             throw new ArgumentException("Logo size does not fit; reduce logo size or enlarge the cards.");
         }
@@ -69,9 +69,9 @@ public static class CouponLayout
             throw new ArgumentException("Back title must be at most 200 characters and back text must be at most 1000 characters.");
         }
 
-        foreach (var color in new[] { options.BackgroundColor, options.AccentColor, options.BorderColor })
+        foreach (var color in new[] { options.BackgroundColor, options.AccentColor, options.BorderColor, options.BackBackgroundColor, options.BackAccentColor, options.BackBorderColor })
         {
-            if (!color.StartsWith('#') || (color.Length != 7 && color.Length != 9) || !int.TryParse(color[1..], System.Globalization.NumberStyles.HexNumber, null, out _))
+            if (color is null || !color.StartsWith('#') || (color.Length != 7 && color.Length != 9) || !int.TryParse(color[1..], System.Globalization.NumberStyles.HexNumber, null, out _))
             {
                 throw new ArgumentException($"Invalid color: {color}. Use #RRGGBB or #RRGGBBAA format.");
             }
