@@ -54,7 +54,31 @@ public static class CouponLayout
             throw new ArgumentException("Code font size must be 0 (automatic) or at most 30 points.");
         }
 
+        if (options.LogoWidthMm is < 0 or > 100 || options.LogoHeightMm is < 1 or > 40 || options.LogoWidthMm + options.QrSizeMm + 2 * options.CardPaddingMm + 2 >= cardWidth && options.LogoHeightMm > 0)
+        {
+            throw new ArgumentException("Logo size does not fit; reduce logo size or enlarge the cards.");
+        }
+
+        if (options.BorderWidthPt is < 0 or > 6 || options.CornerRadiusMm is < 0 or > 15)
+        {
+            throw new ArgumentException("Border width must be 0–6 points and corner radius must be 0–15 mm.");
+        }
+
+        if (options.BackEnabled && ((options.BackTitle?.Length ?? 0) > 200 || (options.BackText?.Length ?? 0) > 1000))
+        {
+            throw new ArgumentException("Back title must be at most 200 characters and back text must be at most 1000 characters.");
+        }
+
+        foreach (var color in new[] { options.BackgroundColor, options.AccentColor, options.BorderColor })
+        {
+            if (!color.StartsWith('#') || (color.Length != 7 && color.Length != 9) || !int.TryParse(color[1..], System.Globalization.NumberStyles.HexNumber, null, out _))
+            {
+                throw new ArgumentException($"Invalid color: {color}. Use #RRGGBB or #RRGGBBAA format.");
+            }
+        }
+
         int perPage = checked(options.Columns * options.Rows);
-        return new(cardWidth, cardHeight, perPage, (couponCount + perPage - 1) / perPage);
+        int frontPageCount = (couponCount + perPage - 1) / perPage;
+        return new(cardWidth, cardHeight, perPage, frontPageCount * (options.BackEnabled ? 2 : 1), frontPageCount);
     }
 }
