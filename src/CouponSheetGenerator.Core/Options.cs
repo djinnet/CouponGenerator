@@ -16,6 +16,8 @@ public sealed class Options
     public int Rows { get; set; } = 3;
     public double Margin { get; set; } = 10;
     public double CardGap { get; set; } = 4;
+    [JsonConverter(typeof(JsonStringEnumConverter<CardSizePreset>))]
+    public CardSizePreset CardSizePreset { get; set; } = CardSizePreset.Automatic;
     public bool CutMarks { get; set; }
     public bool PageNumbers { get; set; }
     public string? Logo { get; set; }

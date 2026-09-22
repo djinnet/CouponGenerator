@@ -82,8 +82,10 @@
                     <TextBlock Text="Page layout" FontSize="18" FontWeight="Bold"/>
                     <TextBlock Text="Page size"/><ComboBox ItemsSource="{Binding PageSizeOptions}" SelectedItem="{Binding SelectedPageSize}" Width="180" HorizontalAlignment="Left"/>
                     <TextBlock Text="Orientation"/><ComboBox ItemsSource="{Binding OrientationOptions}" SelectedItem="{Binding SelectedOrientation}" Width="180" HorizontalAlignment="Left"/>
-                    <TextBlock Text="Columns"/><NumericUpDown Value="{Binding Columns}" Minimum="1" Maximum="10"/>
-                    <TextBlock Text="Rows"/><NumericUpDown Value="{Binding Rows}" Minimum="1" Maximum="10"/>
+                    <TextBlock Text="Card size preset"/><ComboBox ItemsSource="{Binding CardSizeOptions}" SelectedItem="{Binding CardSizeChoice}" MinWidth="320" HorizontalAlignment="Left"/>
+                    <TextBlock Text="Fixed sizes choose the largest grid that fits. Automatic uses the rows and columns below. Square and slim cards use a compact face layout." TextWrapping="Wrap"/>
+                    <TextBlock Text="Columns (Automatic)"/><NumericUpDown Value="{Binding Columns}" IsEnabled="{Binding IsAutomaticCardSize}" Minimum="1" Maximum="10"/>
+                    <TextBlock Text="Rows (Automatic)"/><NumericUpDown Value="{Binding Rows}" IsEnabled="{Binding IsAutomaticCardSize}" Minimum="1" Maximum="10"/>
                     <TextBlock Text="Margin (mm)"/><NumericUpDown Value="{Binding Margin}" Minimum="0" Maximum="100"/>
                     <TextBlock Text="Card gap (mm)"/><NumericUpDown Value="{Binding CardGap}" Minimum="0" Maximum="100"/>
                     <CheckBox Content="Cut marks" IsChecked="{Binding CutMarks}"/>

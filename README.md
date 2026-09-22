@@ -24,7 +24,9 @@ Run with no arguments to see all options. `--config sample/config.example.json` 
 
 The desktop app can import TSV by picker or drag-and-drop, review eligible records and warnings, edit the shared page and content settings, render the generated PDF in its preview tab, and export with a Save As dialog. Import and Save As in Settings use the same JSON format as the CLI. GUI edits remain in memory until Save As. The record-table filter affects display only; export always includes every eligible record in source order.
 
-Page size and orientation use enum-backed dropdowns in the desktop app. The shared JSON and CLI still use the existing `"A4"`/`"Letter"` and `"portrait"`/`"landscape"` strings.
+Page size and orientation use enum-backed dropdowns in the desktop app. The shared JSON and CLI still use the existing `"A4"`/`"Letter"` and `"portrait"`/`"landscape"` strings. Card size is a separate dropdown: Automatic retains the existing rows-and-columns layout; fixed presets use exact card dimensions and choose the largest grid that fits the page, margins, gap, title, and footer. The preset is stored as `CardSizePreset` in shared JSON; omitting it keeps Automatic. CLI flags and existing configuration files keep their behavior.
+
+Fixed card sizes include Classic (93 × approximately 89.7 mm), European business (85 × 55 mm), American business (88.9 × 50.8 mm), Standard business (90 × 50 mm), Mini (70 × 40 mm), Postcard (100 × 70 mm), Folded (85 × 110 mm), Square (55 × 55 mm), and Slim (85 × 35 mm). Classic uses 89.66 mm height so the familiar rounded 89.7 mm card fits three rows on A4 with the default margins and gaps. The fixed presets derive their row and column counts from available page space, so the Rows and Columns controls apply only to Automatic. Mini, Square, and Slim use a compact face showing the product, full promotional code, QR, and optional logo; optional dates, status, IDs, instruction, and URL text are omitted from those small faces. Their effective QR size may be reduced to fit and is shown in the layout summary. Keep redeemable URLs short enough for the smaller QR codes to scan reliably.
 
 Coupon design includes Minimal, Modern, and Ink-saving presets, plus product/date/status visibility, order-name display, instruction text, code font size, QR size, and card padding. These extra settings are saved in the shared JSON and default to the CLI's historical appearance.
 
@@ -42,7 +44,7 @@ For a platform-specific release, use `dotnet publish src/CouponSheetGenerator.De
 
 Use UTF-8 TSV with a header row. Required headers: `Product name`, `Promotional code`, `Redeemable URL`. Optional headers: `Order name`, `Start date`, `Expire date`, `Code ID`, `Order ID`, `Given to`, `Available`, and `Redeemed`. Headers are matched case-insensitively after trimming, and a UTF-8 BOM is accepted. Extra columns are ignored. Quoted tabs, quotes, and newlines are supported. The code is preserved exactly; no trimming or numeric conversion is applied. Product and URL fields are trimmed.
 
-Booleans accept true/false, yes/no, and 1/0 without regard to case. A blank `Available` defaults to true, and a blank `Redeemed` defaults to false. Invalid optional booleans produce a row warning and use those defaults. Dates accept `yyyy-MM-dd`, `yyyy/MM/dd`, and English month-name forms such as `18 Sep 2026` or `Sep 18 2026`. Numeric day/month forms such as `02/03/2026` are rejected as ambiguous; invalid optional dates produce a row warning and are ignored.
+Booleans accept true/false, yes/no, and 1/0 without regard to case. A blank `Available` defaults to true, and a blank `Redeemed` defaults to false. Invalid optional booleans produce a row warning and use those defaults. Dates accept `yyyy-MM-dd`, `yyyy/MM/dd`, and English month-name forms such as `18 Sep 2026` or `Sep 18 2026`. Exported US timestamps such as `9/19/2026 8:00 AM` are also accepted, interpreted as local time, displayed with their time, and used for exact start/expiry filtering. `1/1/0001 12:00 AM` is treated as an unset date. A date-only expiry remains valid through the end of that date. Bare numeric slash dates such as `02/03/2026` remain rejected as ambiguous; invalid optional dates produce a row warning and are ignored.
 
 Absent optional columns are reported. Duplicate promotional codes and Code IDs are reported and retained as separate records, matching the CLI's previous behavior. Input is limited to 32 MiB, 100,000 records, and 16,384 characters per field. These limits are currently fixed. Invalid rows are excluded while valid rows remain available for generation.
 
@@ -84,6 +86,7 @@ The JSON key is the `Options` property name. Desktop controls are in the Coupon 
 | `--page-size` | `PageSize` | Page layout: Page size dropdown | A4 | Paper size |
 | `--orientation` | `Orientation` | Page layout: Orientation dropdown | portrait | Paper orientation |
 | `--columns`, `--rows` | `Columns`, `Rows` | Page layout: Columns, Rows | 2, 3 | Cards per page |
+| No CLI flag; JSON only | `CardSizePreset` | Page layout: Card size preset dropdown | Automatic | Exact fixed card size and fitted grid, or legacy automatic grid |
 | `--margin`, `--card-gap` | `Margin`, `CardGap` | Page layout: Margin, Card gap | 10 mm, 4 mm | Page and card spacing |
 | `--cut-marks`, `--page-numbers` | `CutMarks`, `PageNumbers` | Page layout: checkboxes | false | Borders and page labels |
 | `--title`, `--footer` | `Title`, `Footer` | Coupon design: Title, Footer | empty | Header and footer |

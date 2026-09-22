@@ -4,7 +4,7 @@ using CsvHelper.Configuration;
 
 namespace CouponSheetGenerator;
 
-public sealed record CouponRecord(int Row, string Product, string Code, string Url, DateOnly? Start, DateOnly? Expiry, bool Available, bool Redeemed, string GivenTo, string CodeId, string OrderId, string OrderName = "");
+public sealed record CouponRecord(int Row, string Product, string Code, string Url, DateOnly? Start, DateOnly? Expiry, bool Available, bool Redeemed, string GivenTo, string CodeId, string OrderId, string OrderName = "", DateTime? StartTimestamp = null, DateTime? ExpiryTimestamp = null);
 public sealed record ReadResult(List<CouponRecord> Records, List<string> Warnings, int RowsRead, int InvalidRows);
 public sealed record Selection(List<CouponRecord> Coupons, int RedeemedExcluded, int UnavailableExcluded, int ExpiredExcluded, int FutureExcluded);
 
@@ -113,9 +113,9 @@ public static class TsvReader
 
             bool available = ParseBool(Field("Available"), true, "Available", row, warnings);
             bool redeemed = ParseBool(Field("Redeemed"), false, "Redeemed", row, warnings);
-            DateOnly? start = ParseDate(Field("Start date"), "Start date", row, warnings);
-            DateOnly? expiry = ParseDate(Field("Expire date"), "Expire date", row, warnings);
-            records.Add(new(row, product, code, url, start, expiry, available, redeemed, Field("Given to").Trim(), codeId, Field("Order ID").Trim(), Field("Order name").Trim()));
+            var start = ParseDate(Field("Start date"), "Start date", row, warnings);
+            var expiry = ParseDate(Field("Expire date"), "Expire date", row, warnings);
+            records.Add(new(row, product, code, url, start.Date, expiry.Date, available, redeemed, Field("Given to").Trim(), codeId, Field("Order ID").Trim(), Field("Order name").Trim(), start.Timestamp, expiry.Timestamp));
         }
         if (rows == 0)
         {
@@ -143,27 +143,40 @@ public static class TsvReader
             return fallback;
         }
     }
-    static DateOnly? ParseDate(string raw, string name, int row, List<string> warnings)
+    private readonly record struct ParsedDate(DateOnly? Date, DateTime? Timestamp);
+
+    static ParsedDate ParseDate(string raw, string name, int row, List<string> warnings)
     {
         if (string.IsNullOrWhiteSpace(raw))
         {
-            return null;
+            return default;
         }
 
         string[] formats = ["yyyy-MM-dd", "yyyy/MM/dd", "dd MMM yyyy", "d MMM yyyy", "MMM d yyyy", "MMMM d yyyy"];
         if (DateOnly.TryParseExact(raw.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
         {
-            return date;
+            return date == DateOnly.MinValue ? default : new(date, null);
+        }
+
+        // The TSV export uses US month/day order only when an AM/PM time is present.
+        // A bare numeric slash date remains ambiguous and is rejected.
+        string[] timestampFormats = ["M/d/yyyy h:mm tt", "M/d/yyyy h:mm:ss tt"];
+        if (DateTime.TryParseExact(raw.Trim(), timestampFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var timestamp))
+        {
+            return timestamp == DateTime.MinValue ? default : new(DateOnly.FromDateTime(timestamp), timestamp);
         }
 
         warnings.Add($"Row {row}: invalid or ambiguous {name}; date ignored.");
-        return null;
+        return default;
     }
 }
 
 public static class Eligibility
 {
     public static Selection Select(IEnumerable<CouponRecord> records, Options o, DateOnly today)
+        => Select(records, o, today.ToDateTime(TimeOnly.MinValue));
+
+    public static Selection Select(IEnumerable<CouponRecord> records, Options o, DateTime asOf)
     {
         var coupons = new List<CouponRecord>();
         int redeemed = 0, unavailable = 0, expired = 0, future = 0;
@@ -171,10 +184,16 @@ public static class Eligibility
         {
             if (r.Redeemed && !o.IncludeRedeemed) { redeemed++; continue; }
             if (!r.Available && !o.IncludeUnavailable) { unavailable++; continue; }
-            if (r.Expiry < today && !o.IncludeExpired) { expired++; continue; }
-            if (r.Start > today && !o.IncludeFuture) { future++; continue; }
+            if (IsExpired(r, asOf) && !o.IncludeExpired) { expired++; continue; }
+            if (IsFuture(r, asOf) && !o.IncludeFuture) { future++; continue; }
             coupons.Add(r);
         }
         return new(coupons, redeemed, unavailable, expired, future);
     }
+
+    public static bool IsExpired(CouponRecord record, DateTime asOf)
+        => record.ExpiryTimestamp is { } timestamp ? timestamp <= asOf : record.Expiry < DateOnly.FromDateTime(asOf);
+
+    public static bool IsFuture(CouponRecord record, DateTime asOf)
+        => record.StartTimestamp is { } timestamp ? timestamp > asOf : record.Start > DateOnly.FromDateTime(asOf);
 }

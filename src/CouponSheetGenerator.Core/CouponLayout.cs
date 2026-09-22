@@ -2,7 +2,9 @@ using QuestPDF.Helpers;
 
 namespace CouponSheetGenerator;
 
-public sealed record LayoutMetrics(double CardWidthMm, double CardHeightMm, int CouponsPerPage, int PageCount, int FrontPageCount);
+public sealed record LayoutMetrics(
+    double CardWidthMm, double CardHeightMm, int CouponsPerPage, int PageCount, int FrontPageCount,
+    int Columns, int Rows, double QrSizeMm, bool Compact);
 
 public static class CouponLayout
 {
@@ -37,14 +39,34 @@ public static class CouponLayout
             height -= 8;
         }
 
-        var cardWidth = (width - (options.Columns - 1) * options.CardGap) / options.Columns;
-        var cardHeight = (height - (options.Rows - 1) * options.CardGap) / options.Rows;
-        if (cardWidth < 70 || cardHeight < 57)
+        bool automatic = options.CardSizePreset == CardSizePreset.Automatic;
+        double cardWidth, cardHeight;
+        int columns, rows;
+        if (automatic)
+        {
+            columns = options.Columns;
+            rows = options.Rows;
+            cardWidth = (width - (columns - 1) * options.CardGap) / columns;
+            cardHeight = (height - (rows - 1) * options.CardGap) / rows;
+        }
+        else
+        {
+            (cardWidth, cardHeight) = CardSizePresets.Size(options.CardSizePreset);
+            columns = Math.Min(10, (int)Math.Floor((width + options.CardGap) / (cardWidth + options.CardGap)));
+            rows = Math.Min(10, (int)Math.Floor((height + options.CardGap) / (cardHeight + options.CardGap)));
+            if (columns < 1 || rows < 1)
+                throw new ArgumentException("The selected card size does not fit this page, margin, title, and footer combination.");
+        }
+
+        if (automatic && (cardWidth < 70 || cardHeight < 57))
         {
             throw new ArgumentException("Cards are too small for a legible QR code; reduce the grid or margins.");
         }
 
-        if (options.CardPaddingMm is < 0 or > 20 || options.QrSizeMm < 20 || options.QrSizeMm + 2 * options.CardPaddingMm + 2 >= cardWidth || options.QrSizeMm + 2 * options.CardPaddingMm >= cardHeight)
+        bool compact = !automatic && (cardWidth <= 70 || cardHeight <= 40);
+        double qrSize = compact ? Math.Min(options.QrSizeMm, Math.Min(26, cardHeight - 2 * options.CardPaddingMm - 2)) : options.QrSizeMm;
+        if (options.CardPaddingMm is < 0 or > 20 || options.QrSizeMm < 20 || qrSize < 20 ||
+            qrSize + 2 * options.CardPaddingMm + 2 >= cardWidth || qrSize + 2 * options.CardPaddingMm >= cardHeight)
         {
             throw new ArgumentException("QR size or card padding does not fit; reduce QR size or padding, or enlarge the cards.");
         }
@@ -54,7 +76,7 @@ public static class CouponLayout
             throw new ArgumentException("Code font size must be 0 (automatic) or at most 30 points.");
         }
 
-        if (options.LogoWidthMm is < 0 or > 100 || options.LogoHeightMm is < 1 or > 40 || options.LogoWidthMm > 0 && options.LogoWidthMm + options.QrSizeMm + 2 * options.CardPaddingMm + 2 >= cardWidth)
+        if (options.LogoWidthMm is < 0 or > 100 || options.LogoHeightMm is < 1 or > 40 || options.LogoWidthMm > 0 && !compact && options.LogoWidthMm + qrSize + 2 * options.CardPaddingMm + 2 >= cardWidth)
         {
             throw new ArgumentException("Logo size does not fit; reduce logo size or enlarge the cards.");
         }
@@ -77,8 +99,8 @@ public static class CouponLayout
             }
         }
 
-        int perPage = checked(options.Columns * options.Rows);
+        int perPage = checked(columns * rows);
         int frontPageCount = (couponCount + perPage - 1) / perPage;
-        return new(cardWidth, cardHeight, perPage, frontPageCount * (options.BackEnabled ? 2 : 1), frontPageCount);
+        return new(cardWidth, cardHeight, perPage, frontPageCount * (options.BackEnabled ? 2 : 1), frontPageCount, columns, rows, qrSize, compact);
     }
 }

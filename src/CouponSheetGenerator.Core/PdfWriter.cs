@@ -1,4 +1,5 @@
 using QRCoder;
+using System.Globalization;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -56,29 +57,34 @@ public static class PdfWriter
 
                     pg.Content().Column(col =>
                     {
-                        for (int r = 0; r < o.Rows; r++)
+                        for (int r = 0; r < metrics.Rows; r++)
                         {
                             int row = r;
-                            col.Item().Height(cardHeight, Unit.Millimetre).Row(grid =>
+                            var cardRow = col.Item().Height(cardHeight, Unit.Millimetre);
+                            if (o.CardSizePreset != CardSizePreset.Automatic)
+                                cardRow = cardRow.AlignCenter().Width((float)(metrics.Columns * metrics.CardWidthMm + (metrics.Columns - 1) * o.CardGap), Unit.Millimetre);
+                            cardRow.Row(grid =>
                             {
-                                for (int c = 0; c < o.Columns; c++)
+                                for (int c = 0; c < metrics.Columns; c++)
                                 {
                                     if (c > 0)
                                     {
                                         grid.ConstantItem((float)o.CardGap, Unit.Millimetre);
                                     }
 
-                                    int sourceColumn = isBack && o.BackMirrorColumns ? o.Columns - 1 - c : c;
-                                    int index = pageIndex * perPage + row * o.Columns + sourceColumn;
-                                    var cell = grid.RelativeItem();
+                                    int sourceColumn = isBack && o.BackMirrorColumns ? metrics.Columns - 1 - c : c;
+                                    int index = pageIndex * perPage + row * metrics.Columns + sourceColumn;
+                                    var cell = o.CardSizePreset == CardSizePreset.Automatic
+                                        ? grid.RelativeItem()
+                                        : grid.ConstantItem((float)metrics.CardWidthMm, Unit.Millimetre);
                                     if (index < coupons.Count)
                                     {
-                                        if (isBack) BackCard(cell, o, logo, backImage);
-                                        else Card(cell, coupons[index], o, accent, background, logo, frontImage);
+                                        if (isBack) BackCard(cell, o, logo, backImage, metrics.Compact);
+                                        else Card(cell, coupons[index], o, accent, background, logo, frontImage, metrics);
                                     }
                                 }
                             });
-                            if (r < o.Rows - 1) col.Item().Height((float)o.CardGap, Unit.Millimetre);
+                            if (r < metrics.Rows - 1) col.Item().Height((float)o.CardGap, Unit.Millimetre);
                         }
                     });
                     if (!string.IsNullOrEmpty(o.Footer) || o.PageNumbers)
@@ -100,24 +106,29 @@ public static class PdfWriter
         return pages;
     }
 
-    static void Card(IContainer cell, CouponRecord r, Options o, string accent, string background, byte[]? logo, byte[]? frontImage)
+    static void Card(IContainer cell, CouponRecord r, Options o, string accent, string background, byte[]? logo, byte[]? frontImage, LayoutMetrics metrics)
     {
         // One fixed box per record guarantees that no card crosses a page boundary.
         var styled = cell.CornerRadius((float)o.CornerRadiusMm, Unit.Millimetre)
             .Border((float)o.BorderWidthPt).BorderColor(o.CutMarks ? "#000000" : o.BorderColor).Background(background);
         if (frontImage is null)
-            FrontContent(styled.Padding((float)o.CardPaddingMm, Unit.Millimetre), r, o, accent, logo, false);
+            FrontContent(styled.Padding((float)o.CardPaddingMm, Unit.Millimetre), r, o, accent, logo, false, metrics);
         else
             styled.Layers(layers =>
             {
                 var image = layers.Layer().CornerRadius((float)o.CornerRadiusMm, Unit.Millimetre).Image(frontImage);
                 if (o.CardBackgroundImageFit == CardImageFit.Stretch) image.FitUnproportionally(); else image.FitArea();
-                FrontContent(layers.PrimaryLayer().Padding((float)o.CardPaddingMm, Unit.Millimetre), r, o, accent, logo, true);
+                FrontContent(layers.PrimaryLayer().Padding((float)o.CardPaddingMm, Unit.Millimetre), r, o, accent, logo, true, metrics);
             });
     }
 
-    static void FrontContent(IContainer content, CouponRecord r, Options o, string accent, byte[]? logo, bool hasImage)
+    static void FrontContent(IContainer content, CouponRecord r, Options o, string accent, byte[]? logo, bool hasImage, LayoutMetrics metrics)
     {
+        if (metrics.Compact)
+        {
+            CompactFrontContent(content, r, o, accent, logo, hasImage, metrics);
+            return;
+        }
         content.Row(row =>
         {
             var leftPanel = row.RelativeItem();
@@ -137,12 +148,12 @@ public static class PdfWriter
                     .FontSize(o.CodeFontSize > 0 ? (float)o.CodeFontSize : r.Code.Length > 35 ? 8 : r.Code.Length > 20 ? 10 : 13).Bold().FontColor(accent);
                 if (o.ShowDates && r.Start is { } start)
                 {
-                    left.Item().Text($"Starts: {start:yyyy-MM-dd}").FontSize(7);
+                    left.Item().Text(r.StartTimestamp is { } startTime ? "Starts: " + startTime.ToString("yyyy-MM-dd h:mm tt", CultureInfo.InvariantCulture) : $"Starts: {start:yyyy-MM-dd}").FontSize(7);
                 }
 
                 if (o.ShowDates && r.Expiry is { } expiry)
                 {
-                    left.Item().Text($"Expires: {expiry:yyyy-MM-dd}").FontSize(7);
+                    left.Item().Text(r.ExpiryTimestamp is { } expiryTime ? "Expires: " + expiryTime.ToString("yyyy-MM-dd h:mm tt", CultureInfo.InvariantCulture) : $"Expires: {expiry:yyyy-MM-dd}").FontSize(7);
                 }
 
                 if (o.IncludeGivenTo && r.GivenTo.Length > 0)
@@ -162,16 +173,16 @@ public static class PdfWriter
                         left.Item().Text($"Order ID: {Short(r.OrderId, 30)}").FontSize(6);
                     }
                 }
-                var today = DateOnly.FromDateTime(DateTime.Today);
-                string status = r.Redeemed ? "REDEEMED" : !r.Available ? "UNAVAILABLE" : r.Expiry < today ? "EXPIRED" : r.Start > today ? "NOT YET ACTIVE" : "";
+                var now = DateTime.Now;
+                string status = r.Redeemed ? "REDEEMED" : !r.Available ? "UNAVAILABLE" : Eligibility.IsExpired(r, now) ? "EXPIRED" : Eligibility.IsFuture(r, now) ? "NOT YET ACTIVE" : "";
                 if (o.ShowStatus && status.Length > 0)
                 {
                     left.Item().Text(status).FontSize(7).Bold();
                 }
             });
-            row.ConstantItem((float)o.QrSizeMm + 2, Unit.Millimetre).Column(right =>
+            row.ConstantItem((float)metrics.QrSizeMm + 2, Unit.Millimetre).Column(right =>
             {
-                right.Item().Width((float)o.QrSizeMm, Unit.Millimetre).Height((float)o.QrSizeMm, Unit.Millimetre).Image(QrPng(r.Url, o.QrSizeMm)).FitArea();
+                right.Item().Width((float)metrics.QrSizeMm, Unit.Millimetre).Height((float)metrics.QrSizeMm, Unit.Millimetre).Image(QrPng(r.Url, metrics.QrSizeMm)).FitArea();
                 if (o.InstructionText.Length > 0) right.Item().Text(o.InstructionText).FontSize(6).AlignCenter();
                 if (o.IncludeUrl != "none")
                 {
@@ -180,43 +191,88 @@ public static class PdfWriter
             });
         });
     }
-    static void BackCard(IContainer cell, Options o, byte[]? logo, byte[]? backImage)
+
+    static void CompactFrontContent(IContainer content, CouponRecord r, Options o, string accent, byte[]? logo, bool hasImage, LayoutMetrics metrics)
+    {
+        float qr = (float)metrics.QrSizeMm;
+        if (o.CardSizePreset == CardSizePreset.Square)
+        {
+            content.Column(column =>
+            {
+                if (logo is not null)
+                {
+                    var logoSlot = column.Item().AlignCenter().Height((float)Math.Min(o.LogoHeightMm, 8), Unit.Millimetre);
+                    if (o.LogoWidthMm > 0) logoSlot = logoSlot.Width((float)Math.Min(o.LogoWidthMm, metrics.CardWidthMm - 2 * o.CardPaddingMm), Unit.Millimetre);
+                    logoSlot.Image(logo).FitArea();
+                }
+                column.Item().AlignCenter().Width(qr, Unit.Millimetre).Height(qr, Unit.Millimetre).Image(QrPng(r.Url, qr)).FitArea();
+                var label = column.Item().AlignCenter();
+                if (hasImage) label = label.Background("#E6FFFFFF");
+                label.Column(text =>
+                {
+                    if (o.ShowProductName) text.Item().Text(Short(r.Product, 28)).FontSize(7).Bold().FontColor(accent).AlignCenter();
+                    text.Item().Text(r.Code).FontSize(r.Code.Length > 20 ? 6 : 9).Bold().FontColor(accent).AlignCenter();
+                });
+            });
+            return;
+        }
+
+        content.Row(row =>
+        {
+            var label = row.RelativeItem();
+            if (hasImage) label = label.Background("#E6FFFFFF");
+            label.Column(text =>
+            {
+                if (logo is not null)
+                {
+                    var logoSlot = text.Item().Height((float)Math.Min(o.LogoHeightMm, 7), Unit.Millimetre);
+                    if (o.LogoWidthMm > 0) logoSlot = logoSlot.Width((float)Math.Min(o.LogoWidthMm, metrics.CardWidthMm - qr - 2 * o.CardPaddingMm - 2), Unit.Millimetre);
+                    logoSlot.Image(logo).FitArea();
+                }
+                if (o.ShowProductName) text.Item().Text(Short(r.Product, 36)).FontSize(7).Bold().FontColor(accent);
+                text.Item().Text(r.Code).FontSize(r.Code.Length > 20 ? 7 : 10).Bold().FontColor(accent);
+            });
+            row.ConstantItem(qr + 1, Unit.Millimetre).Width(qr, Unit.Millimetre).Height(qr, Unit.Millimetre).Image(QrPng(r.Url, qr)).FitArea();
+        });
+    }
+
+    static void BackCard(IContainer cell, Options o, byte[]? logo, byte[]? backImage, bool compact)
     {
         string background = o.BlackAndWhite ? "#FFFFFF" : o.BackBackgroundColor;
         string accent = o.BlackAndWhite ? "#000000" : o.BackAccentColor;
         var styled = cell.CornerRadius((float)o.CornerRadiusMm, Unit.Millimetre)
             .Border((float)o.BorderWidthPt).BorderColor(o.CutMarks ? "#000000" : o.BackBorderColor).Background(background);
         if (backImage is null)
-            BackContent(styled.Padding((float)o.CardPaddingMm, Unit.Millimetre), o, logo, accent, false);
+            BackContent(styled.Padding((float)o.CardPaddingMm, Unit.Millimetre), o, logo, accent, false, compact);
         else
             styled.Layers(layers =>
             {
                 var image = layers.Layer().CornerRadius((float)o.CornerRadiusMm, Unit.Millimetre).Image(backImage);
                 if (o.BackBackgroundImageFit == CardImageFit.Stretch) image.FitUnproportionally(); else image.FitArea();
-                BackContent(layers.PrimaryLayer().Padding((float)o.CardPaddingMm, Unit.Millimetre), o, logo, accent, true);
+                BackContent(layers.PrimaryLayer().Padding((float)o.CardPaddingMm, Unit.Millimetre), o, logo, accent, true, compact);
             });
     }
-    static void BackContent(IContainer content, Options o, byte[]? logo, string accent, bool hasImage)
+    static void BackContent(IContainer content, Options o, byte[]? logo, string accent, bool hasImage, bool compact)
     {
         content.AlignCenter().AlignMiddle().Column(column =>
         {
             if (o.BackShowLogo && logo is not null)
             {
-                var logoSlot = column.Item().AlignCenter().Height((float)o.LogoHeightMm, Unit.Millimetre);
-                if (o.LogoWidthMm > 0) logoSlot = logoSlot.Width((float)o.LogoWidthMm, Unit.Millimetre);
+                var logoSlot = column.Item().AlignCenter().Height((float)(compact ? Math.Min(o.LogoHeightMm, 6) : o.LogoHeightMm), Unit.Millimetre);
+                if (o.LogoWidthMm > 0) logoSlot = logoSlot.Width((float)(compact ? Math.Min(o.LogoWidthMm, 40) : o.LogoWidthMm), Unit.Millimetre);
                 logoSlot.Image(logo).FitArea();
             }
             if (!string.IsNullOrEmpty(o.BackTitle))
             {
                 var title = column.Item().AlignCenter();
                 if (hasImage) title = title.Background("#E6FFFFFF");
-                title.Text(o.BackTitle).FontSize(14).Bold().FontColor(accent).AlignCenter();
+                title.Text(o.BackTitle).FontSize(compact ? 10 : 14).Bold().FontColor(accent).AlignCenter();
             }
             if (!string.IsNullOrEmpty(o.BackText))
             {
-                var text = column.Item().PaddingTop(3, Unit.Millimetre).PaddingHorizontal(5, Unit.Millimetre).AlignCenter();
+                var text = column.Item().PaddingTop(compact ? 1 : 3, Unit.Millimetre).PaddingHorizontal(compact ? 1 : 5, Unit.Millimetre).AlignCenter();
                 if (hasImage) text = text.Background("#E6FFFFFF");
-                text.Text(o.BackText).FontSize(8).AlignCenter();
+                text.Text(o.BackText).FontSize(compact ? 6 : 8).AlignCenter();
             }
         });
     }

@@ -102,6 +102,30 @@ public class GeneratorTests
         Assert.Equal("", record.GivenTo);
         File.Delete(path);
     }
+    [Fact] public void ExportedUsTimestampsAndNumericBooleansPreserveTimeBoundaries()
+    {
+        string path = Temp(Header
+            + Row(code: "ACTIVE-LATER", start: "9/19/2026 8:00 AM", expiry: "1/1/0001 12:00 AM", available: "1", redeemed: "0")
+            + Row(code: "EXPIRED-AT-EIGHT", expiry: "9/19/2026 8:00 AM", available: "1", redeemed: "0"));
+        try
+        {
+            var result = TsvReader.Read(path);
+            Assert.Equal(0, result.InvalidRows);
+            Assert.DoesNotContain(result.Warnings, warning => warning.Contains("invalid or ambiguous"));
+            Assert.All(result.Records, record => { Assert.True(record.Available); Assert.False(record.Redeemed); });
+            Assert.Equal(new DateTime(2026, 9, 19, 8, 0, 0), result.Records[0].StartTimestamp);
+            Assert.Null(result.Records[0].Expiry);
+            Assert.Null(result.Records[0].ExpiryTimestamp);
+            var beforeEight = Eligibility.Select(result.Records, new Options(), new DateTime(2026, 9, 19, 7, 59, 0));
+            Assert.Single(beforeEight.Coupons);
+            Assert.Equal(1, beforeEight.FutureExcluded);
+            var afterEight = Eligibility.Select(result.Records, new Options(), new DateTime(2026, 9, 19, 8, 1, 0));
+            Assert.Single(afterEight.Coupons);
+            Assert.Equal(1, afterEight.ExpiredExcluded);
+            Assert.Equal(1, Eligibility.Select(result.Records, new Options(), new DateTime(2026, 9, 19, 8, 0, 0)).ExpiredExcluded);
+        }
+        finally { File.Delete(path); }
+    }
     [Fact] public void LongProductAndPartialLastPage()
     {
         var records = Enumerable.Range(0, 7).Select(i => new CouponRecord(i+2, "東京 " + new string('X', 300), $"LONG-{i}", $"https://example.invalid/{i}", null, null, true, false, "", "", "")).ToList();

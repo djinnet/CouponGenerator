@@ -14,7 +14,7 @@ try
         Console.Error.WriteLine(warning);
     }
 
-    var selection = Eligibility.Select(result.Records, options, DateOnly.FromDateTime(DateTime.Today));
+    var selection = Eligibility.Select(result.Records, options, DateTime.Now);
     if (args[0] == "validate")
     {
         Console.WriteLine($"Rows read: {result.RowsRead}; valid records: {result.Records.Count}; invalid records: {result.InvalidRows}; eligible coupons: {selection.Coupons.Count}");

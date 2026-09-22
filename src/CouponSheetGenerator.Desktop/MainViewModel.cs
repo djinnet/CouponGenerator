@@ -31,6 +31,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public IReadOnlyList<PageOrientation> OrientationOptions { get; } = Enum.GetValues<PageOrientation>();
     public IReadOnlyList<CardImageFit> ImageFitOptions { get; } = Enum.GetValues<CardImageFit>();
     public IReadOnlyList<string> UrlTextOptions { get; } = ["none", "short", "full"];
+    public IReadOnlyList<CardSizeChoice> CardSizeOptions { get; } =
+    [
+        new(CardSizePreset.Automatic, "Automatic (fill chosen grid)"),
+        new(CardSizePreset.Classic, "Classic · 93 × ~89.7 mm"),
+        new(CardSizePreset.EuropeanBusiness, "European business · 85 × 55 mm"),
+        new(CardSizePreset.AmericanBusiness, "American business · 88.9 × 50.8 mm"),
+        new(CardSizePreset.StandardBusiness, "Standard business · 90 × 50 mm"),
+        new(CardSizePreset.Mini, "Mini · 70 × 40 mm"),
+        new(CardSizePreset.Postcard, "Postcard · 100 × 70 mm"),
+        new(CardSizePreset.Folded, "Folded · 85 × 110 mm"),
+        new(CardSizePreset.Square, "Square · 55 × 55 mm"),
+        new(CardSizePreset.Slim, "Slim · 85 × 35 mm")
+    ];
     [ObservableProperty] private string? inputPath;
     [ObservableProperty] private string summary = "Choose a TSV file to begin.";
     [ObservableProperty] private string layoutSummary = "Import records to calculate the layout.";
@@ -69,7 +82,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ApplyTheme();
         PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(Title) or nameof(Footer) or nameof(PageSize) or nameof(Orientation) or nameof(Columns) or nameof(Rows) or nameof(Margin) or nameof(CardGap) or nameof(CutMarks) or nameof(PageNumbers) or nameof(IncludeGivenTo) or nameof(IncludeIds) or nameof(IncludeUrl) or nameof(IncludeRedeemed) or nameof(IncludeUnavailable) or nameof(IncludeExpired) or nameof(IncludeFuture) or nameof(BlackAndWhite) or nameof(AccentColor) or nameof(BackgroundColor) or nameof(ShowProductName) or nameof(ShowDates) or nameof(ShowStatus) or nameof(ShowOrderName) or nameof(InstructionText) or nameof(CodeFontSize) or nameof(QrSizeMm) or nameof(CardPaddingMm) or nameof(Logo)
+            if (e.PropertyName is nameof(Title) or nameof(Footer) or nameof(PageSize) or nameof(Orientation) or nameof(CardSizeChoice) or nameof(Columns) or nameof(Rows) or nameof(Margin) or nameof(CardGap) or nameof(CutMarks) or nameof(PageNumbers) or nameof(IncludeGivenTo) or nameof(IncludeIds) or nameof(IncludeUrl) or nameof(IncludeRedeemed) or nameof(IncludeUnavailable) or nameof(IncludeExpired) or nameof(IncludeFuture) or nameof(BlackAndWhite) or nameof(AccentColor) or nameof(BackgroundColor) or nameof(ShowProductName) or nameof(ShowDates) or nameof(ShowStatus) or nameof(ShowOrderName) or nameof(InstructionText) or nameof(CodeFontSize) or nameof(QrSizeMm) or nameof(CardPaddingMm) or nameof(Logo)
                 or nameof(SelectedPageSize) or nameof(SelectedOrientation) or nameof(LogoWidthMm) or nameof(LogoHeightMm) or nameof(BorderColor) or nameof(BorderWidthPt) or nameof(CornerRadiusMm) or nameof(CardBackgroundImage) or nameof(CardBackgroundImageFit) or nameof(BackEnabled) or nameof(BackTitle) or nameof(BackText) or nameof(BackBackgroundColor) or nameof(BackAccentColor) or nameof(BackBorderColor) or nameof(BackBackgroundImage) or nameof(BackBackgroundImageFit) or nameof(BackShowLogo) or nameof(BackMirrorColumns))
             {
                 PreviewStatus = "Preview is stale. Refresh before reviewing.";
@@ -84,6 +97,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public string Orientation { get => settings.Orientation; set { settings.Orientation = value; OnPropertyChanged(); } }
     public PageSizeKind SelectedPageSize { get => settings.PageSizeValue; set { settings.PageSizeValue = value; OnPropertyChanged(); OnPropertyChanged(nameof(PageSize)); } }
     public PageOrientation SelectedOrientation { get => settings.OrientationValue; set { settings.OrientationValue = value; OnPropertyChanged(); OnPropertyChanged(nameof(Orientation)); } }
+    public CardSizeChoice CardSizeChoice
+    {
+        get => CardSizeOptions.FirstOrDefault(option => option.Value == settings.CardSizePreset) ?? CardSizeOptions[0];
+        set
+        {
+            if (value is null) return;
+            settings.CardSizePreset = value.Value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsAutomaticCardSize));
+        }
+    }
+    public bool IsAutomaticCardSize => settings.CardSizePreset == CardSizePreset.Automatic;
     public int Columns { get => settings.Columns; set { settings.Columns = value; OnPropertyChanged(); } }
     public int Rows { get => settings.Rows; set { settings.Rows = value; OnPropertyChanged(); } }
     public double Margin { get => settings.Margin; set { settings.Margin = value; OnPropertyChanged(); } }
@@ -214,7 +239,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Issues.Clear();
             foreach (var warning in result.Warnings) Issues.Add(warning);
             RefreshIssues();
-            var selection = pipeline.Select(result.Records, settings, DateOnly.FromDateTime(DateTime.Today));
+            var selection = pipeline.Select(result.Records, settings, DateTime.Now);
             Summary = $"Imported {result.RowsRead}; valid {result.Records.Count}; invalid {result.InvalidRows}; eligible {selection.Coupons.Count}; excluded {result.RowsRead - selection.Coupons.Count}.";
             PreviewStatus = "Preview is stale. Refresh before reviewing.";
             Status = "Import completed.";
@@ -242,7 +267,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (imported is null) return;
             ValidateSettings();
-            var selection = pipeline.Select(imported.Records.ToArray(), settings, DateOnly.FromDateTime(DateTime.Today));
+            var selection = pipeline.Select(imported.Records.ToArray(), settings, DateTime.Now);
             if (selection.Coupons.Count == 0) throw new InvalidOperationException("No eligible coupons found.");
             var snapshot = CloneSettings();
             var temporary = preview ? path : Path.Combine(Path.GetDirectoryName(path)!, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
@@ -409,7 +434,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var selected = pipeline.Select(imported.Records, settings, DateOnly.FromDateTime(DateTime.Today));
+        var selected = pipeline.Select(imported.Records, settings, DateTime.Now);
         eligibleCount = selected.Coupons.Count;
         Summary = $"Imported {imported.RowsRead}; valid {imported.Records.Count}; invalid {imported.InvalidRows}; eligible {selected.Coupons.Count}; excluded {imported.RowsRead - selected.Coupons.Count}.";
         UpdateLayoutSummary();
@@ -449,9 +474,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            var count = pipeline.Select(imported.Records, settings, DateOnly.FromDateTime(DateTime.Today)).Coupons.Count;
+            var count = pipeline.Select(imported.Records, settings, DateTime.Now).Coupons.Count;
             var layout = CouponLayout.Calculate(settings, count);
-            LayoutSummary = $"{count} coupons · {layout.PageCount} pages · cards {layout.CardWidthMm:F1} × {layout.CardHeightMm:F1} mm";
+            LayoutSummary = $"{count} coupons · {layout.PageCount} pages · {layout.Columns} × {layout.Rows} grid · cards {layout.CardWidthMm:F1} × {layout.CardHeightMm:F1} mm · QR {layout.QrSizeMm:F0} mm";
         }
         catch (ArgumentException ex) { LayoutSummary = ex.Message; }
         PreviewCommand.NotifyCanExecuteChanged(); ExportCommand.NotifyCanExecuteChanged();
@@ -461,7 +486,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NotifySettings()
     {
         var names = new[] {
-            nameof(Title),
+            nameof(Title), nameof(CardSizeChoice), nameof(IsAutomaticCardSize),
             nameof(Footer),
             nameof(PageSize),
             nameof(Orientation),
@@ -563,3 +588,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 }
 
 public sealed record RecordSummary(int Row, string Product, string Status);
+public sealed record CardSizeChoice(CardSizePreset Value, string Label)
+{
+    public override string ToString() => Label;
+}
