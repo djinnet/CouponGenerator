@@ -40,6 +40,14 @@ dotnet run --project src/CouponSheetGenerator -- generate --config sample/config
 
 For a platform-specific release, use `dotnet publish src/CouponSheetGenerator.Desktop -c Release -r win-x64 --self-contained true` (or `linux-x64` / `osx-x64`). Windows is the only platform built and tested in this workspace. PDFium native libraries are bundled through PDFtoImage for Windows, Linux, and macOS; verify a published package on its target platform before distribution.
 
+## GitHub releases
+
+The **Release Windows EXE** workflow runs manually from **Actions → Release Windows EXE → Run workflow**. Commit and push the workflow to the repository's default branch first so GitHub shows the Run workflow button, then select the branch to release.
+
+Set the application version in [`Directory.Build.props`](Directory.Build.props) before each release (initially `1.0.0`). The workflow reads the desktop project's evaluated `Version`, tests the solution, and publishes a single self-contained Windows x64 desktop executable. It creates a tag such as `v1.0.0` at the selected run's commit, generates release notes, and attaches `CouponSheetGenerator-v1.0.0-win-x64.exe`, SHA-256 checksums, and license notices. Versions with a suffix such as `1.1.0-beta.1` create prereleases. Existing tags are rejected; increase the version for the next release.
+
+The EXE includes .NET, native libraries, and bundled font content; users do not need to install .NET. Bundled files extract automatically on launch. The workflow uploads assets to a draft before publishing it. If an upload or publishing step fails, inspect the draft in GitHub Releases before retrying. It uses the built-in GitHub token with `contents: write`; no personal access token is needed. Repository rules must allow that token to create release tags.
+
 ## TSV schema
 
 Use UTF-8 TSV with a header row. Required headers: `Product name`, `Promotional code`, `Redeemable URL`. Optional headers: `Order name`, `Start date`, `Expire date`, `Code ID`, `Order ID`, `Given to`, `Available`, and `Redeemed`. Headers are matched case-insensitively after trimming, and a UTF-8 BOM is accepted. Extra columns are ignored. Quoted tabs, quotes, and newlines are supported. The code is preserved exactly; no trimming or numeric conversion is applied. Product and URL fields are trimmed.

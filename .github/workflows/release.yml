@@ -1,0 +1,94 @@
+name: Release Windows EXE
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-windows
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PROJECT: src/CouponSheetGenerator.Desktop/CouponSheetGenerator.Desktop.csproj
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+
+    steps:
+      - name: Check out selected commit
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Read project version and check tag
+        id: version
+        run: |
+          $version = dotnet msbuild $env:PROJECT -getProperty:Version -property:Configuration=Release -nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the project version.' }
+          $version = "$version".Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$') {
+            throw "Unsupported version '$version'. Use major.minor.patch with an optional prerelease suffix."
+          }
+          $tag = "v$version"
+          $existing = git tag --list $tag
+          if ($LASTEXITCODE -ne 0) { throw 'Could not check existing tags.' }
+          if ($existing) { throw "Tag $tag already exists. Increase Version in Directory.Build.props before releasing again." }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore CouponSheetGenerator.slnx --configfile NuGet.Config
+
+      - name: Test
+        run: dotnet test --solution CouponSheetGenerator.slnx --configuration Release --no-restore
+
+      - name: Publish standalone Windows executable
+        run: |
+          dotnet publish $env:PROJECT --configuration Release --runtime win-x64 --self-contained true --output publish `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:IncludeAllContentForSelfExtract=true -p:PublishTrimmed=false `
+            -p:DebugType=None -p:DebugSymbols=false
+          if ($LASTEXITCODE -ne 0) { throw 'Publishing failed.' }
+
+      - name: Prepare release assets
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          $exe = 'publish/CouponSheetGenerator.Desktop.exe'
+          if (!(Test-Path $exe)) { throw 'The published executable is missing.' }
+          # Native packages can emit optional PDB symbols even with DebugSymbols=false.
+          $otherFiles = Get-ChildItem publish -Recurse -File | Where-Object { $_.Extension -ne '.pdb' -and $_.FullName -ne (Resolve-Path $exe).Path }
+          if ($otherFiles) { throw "Expected a standalone EXE, but found extra files: $($otherFiles.FullName -join ', ')" }
+          New-Item -ItemType Directory -Path release-assets | Out-Null
+          $assetName = "CouponSheetGenerator-$env:RELEASE_TAG-win-x64.exe"
+          Copy-Item $exe "release-assets/$assetName"
+          $hash = (Get-FileHash "release-assets/$assetName" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $assetName" | Set-Content release-assets/SHA256SUMS.txt -Encoding utf8
+          Copy-Item LICENSE.txt release-assets/LICENSE.txt
+          Copy-Item src/CouponSheetGenerator.Core/Fonts/OFL.txt release-assets/FONT-LICENSE.txt
+
+      - name: Create tag and publish GitHub release
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $assets = (Get-ChildItem release-assets -File).FullName
+          $options = @('--draft', '--target', $env:GITHUB_SHA, '--title', "Coupon Sheet Generator $env:RELEASE_TAG", '--generate-notes')
+          if ($env:RELEASE_VERSION.Contains('-')) { $options += '--prerelease' }
+          gh release create $env:RELEASE_TAG @assets @options
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation/upload failed. Check GitHub Releases for a partial draft before retrying.' }
+          gh release edit $env:RELEASE_TAG --draft=false
+          if ($LASTEXITCODE -ne 0) { throw 'Assets were uploaded, but publishing failed. The draft can be published from GitHub Releases.' }
